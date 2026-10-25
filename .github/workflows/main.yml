@@ -35,4 +35,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ inputs.chat_id || secrets.TELEGRAM_CHAT_ID }}
           TOPIC: ${{ inputs.topic }}
-        run: python -m src
+        run: python -m src.main
