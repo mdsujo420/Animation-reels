@@ -4,7 +4,6 @@ import os
 import requests
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 EMOTIONS = ["angry", "surprised", "happy", "scared"]
 SETTINGS = ["bedroom", "office", "street", "kitchen", "school"]
 
@@ -49,17 +48,49 @@ def _parse(text):
     return json.loads(text)
 
 
-def _groq(prompt):
-    r = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
-        json={"model": GROQ_MODEL, "temperature": 1.0,
-              "response_format": {"type": "json_object"},
-              "messages": [{"role": "user", "content": prompt}]},
-        timeout=90)
+_SKIP = ("whisper", "guard", "tts", "playai", "allam", "embed", "orpheus", "safeguard")
+_PREFER = ("llama-3.3-70b", "gpt-oss-120b", "qwen", "llama-4", "gpt-oss-20b", "kimi", "llama-3.1-8b", "llama")
+
+
+def _groq_models(headers):
+    r = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=30)
     if r.status_code != 200:
-        raise RuntimeError(f"Groq {r.status_code}: {r.text[:200]}")
-    return _parse(r.json()["choices"][0]["message"]["content"])
+        raise RuntimeError(f"Groq models {r.status_code}: {r.text[:120]}")
+    ids = [m["id"] for m in r.json().get("data", []) if not any(k in m["id"].lower() for k in _SKIP)]
+
+    def rank(mid):
+        for i, k in enumerate(_PREFER):
+            if k in mid.lower():
+                return i
+        return len(_PREFER)
+
+    return sorted(ids, key=rank)
+
+
+def _groq(prompt):
+    headers = {"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"}
+    models = _groq_models(headers)
+    forced = os.getenv("GROQ_MODEL", "").strip()
+    if forced:
+        models.insert(0, forced)
+    errors = []
+    for model in models[:6]:
+        for use_json in (True, False):
+            body = {"model": model, "temperature": 1.0, "messages": [{"role": "user", "content": prompt}]}
+            if use_json:
+                body["response_format"] = {"type": "json_object"}
+            try:
+                r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                                  headers=headers, json=body, timeout=90)
+                if r.status_code != 200:
+                    errors.append(f"{model} {r.status_code}")
+                    continue
+                data = _parse(r.json()["choices"][0]["message"]["content"])
+                print("script model:", model)
+                return data
+            except Exception as e:
+                errors.append(f"{model} {str(e)[:60]}")
+    raise RuntimeError("Groq: " + ", ".join(errors[-4:]))
 
 
 def _gemini(prompt):
