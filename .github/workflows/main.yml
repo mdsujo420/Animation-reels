@@ -35,4 +35,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ inputs.chat_id || secrets.TELEGRAM_CHAT_ID }}
           TOPIC: ${{ inputs.topic }}
+          GEMINI_MODEL: gemini-3.8-flash
         run: python -m src.main
